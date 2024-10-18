@@ -34,7 +34,7 @@ class RealEstateValidator(BaseValidatorNeuron):
         self.netuid = self.config.netuid
         self.should_step = True
         self.current_thread = threading.current_thread().name
-        self.logger = Logger(".validator_log.log")
+        self.logger = Logger("/root/s48-validator_log.log")
 
         self.weight_setter = WeightSetter(
             metagraph=self.metagraph,
