@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timezone, timedelta
 from nextplace.validator.utils.system import timeout_with_multiprocess
 from nextplace.validator.utils.contants import ISO8601
+from nextplace.validator.logger import Logger
 
 
 class WeightSetter:
@@ -15,6 +16,7 @@ class WeightSetter:
         subtensor,
         config,
         database_manager,
+        logger=Logger(".validator_log.log"),
     ):
         self.metagraph = metagraph
         self.wallet = wallet
@@ -22,6 +24,7 @@ class WeightSetter:
         self.config = config
         self.database_manager = database_manager
         self.timer = datetime.now(timezone.utc)
+        self.logger = logger
 
     def is_time_to_set_weights(self) -> bool:
         """

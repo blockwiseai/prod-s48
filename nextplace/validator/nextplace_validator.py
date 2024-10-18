@@ -11,6 +11,7 @@ from nextplace.validator.synapse.synapse_manager import SynapseManager
 from nextplace.validator.setting_weights.weights import WeightSetter
 from template.base.validator import BaseValidatorNeuron
 from nextplace.validator.outgoing_data.website_comms import WebsiteProcessor
+from nextplace.validator.logger import Logger
 import threading
 from datetime import datetime, timezone, timedelta
 
@@ -33,6 +34,7 @@ class RealEstateValidator(BaseValidatorNeuron):
         self.netuid = self.config.netuid
         self.should_step = True
         self.current_thread = threading.current_thread().name
+        self.logger = Logger(".validator_log.log")
 
         self.weight_setter = WeightSetter(
             metagraph=self.metagraph,
@@ -209,15 +211,18 @@ class RealEstateValidator(BaseValidatorNeuron):
                 bt.logging.trace(
                     f"| {self.current_thread} | ↻ No data for Synapse, returning."
                 )
+                self.logger.log("synapse_null", synapse, "send")
                 return
 
+            self.logger.log("synapse_sent", synapse, "send")
             responses = self.dendrite.query(
                 axons=self.metagraph.axons,
                 synapse=synapse,
                 deserialize=True,
-                timeout=30
+                timeout=30,
             )
 
+            self.logger.log("responses_received", responses, "receive")
 
             self.prediction_manager.process_predictions(
                 responses
