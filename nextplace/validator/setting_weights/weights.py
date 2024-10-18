@@ -8,7 +8,14 @@ from nextplace.validator.utils.contants import ISO8601
 
 
 class WeightSetter:
-    def __init__(self, metagraph, wallet, subtensor, config, database_manager):
+    def __init__(
+        self,
+        metagraph,
+        wallet,
+        subtensor,
+        config,
+        database_manager,
+    ):
         self.metagraph = metagraph
         self.wallet = wallet
         self.subtensor = subtensor
@@ -35,7 +42,7 @@ class WeightSetter:
         bt.logging.trace("📸 Time to set weights, resetting timer and setting weights.")
         self.timer = datetime.now(timezone.utc)  # Reset the timer
         self.set_weights()  # Set weights
-    
+
     def adjust_scores_based_on_recent_activity(self, scores, hotkey_to_uid):
         """
         Adjust scores to zero for miners with fewer than 10 predictions in the last 5 days.
@@ -44,16 +51,18 @@ class WeightSetter:
         recent_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime(ISO8601)
 
         # Query to get the count of recent predictions for each miner
-        query = f'''
+        query = f"""
             SELECT miner_hotkey, COUNT(*) as recent_count
             FROM predictions
             WHERE score_timestamp > '{recent_date}'
             GROUP BY miner_hotkey
-        '''
+        """
         recent_counts = self.database_manager.query(query)
 
         # Build a dictionary of miner_hotkey to recent_count
-        recent_counts_dict = {miner_hotkey: recent_count for miner_hotkey, recent_count in recent_counts}
+        recent_counts_dict = {
+            miner_hotkey: recent_count for miner_hotkey, recent_count in recent_counts
+        }
 
         # Set scores to 0 for miners with less than 10 recent predictions
         for miner_hotkey, uid in hotkey_to_uid.items():
@@ -63,7 +72,9 @@ class WeightSetter:
 
     def calculate_miner_scores(self):
         try:  # database_manager lock is already acquire at this point
-            results = self.database_manager.query("SELECT miner_hotkey, lifetime_score FROM miner_scores")
+            results = self.database_manager.query(
+                "SELECT miner_hotkey, lifetime_score FROM miner_scores"
+            )
 
             scores = torch.zeros(len(self.metagraph.hotkeys))
             hotkey_to_uid = {hk: uid for uid, hk in enumerate(self.metagraph.hotkeys)}
@@ -72,7 +83,7 @@ class WeightSetter:
                 if miner_hotkey in hotkey_to_uid:
                     uid = hotkey_to_uid[miner_hotkey]
                     scores[uid] = lifetime_score
-                
+
             # Adjust scores based on recent activity - tune these hyperparameters
             # self.adjust_scores_based_on_recent_activity(scores, hotkey_to_uid)
 
@@ -86,13 +97,19 @@ class WeightSetter:
         n_miners = len(scores)
         sorted_indices = torch.argsort(scores, descending=True)
         weights = torch.zeros(n_miners)
-        
-        top_indices, next_indices, bottom_indices = self.get_tier_indices(sorted_indices, n_miners)
-        
-        for indices, weight in [(top_indices, 0.7), (next_indices, 0.2), (bottom_indices, 0.1)]:
+
+        top_indices, next_indices, bottom_indices = self.get_tier_indices(
+            sorted_indices, n_miners
+        )
+
+        for indices, weight in [
+            (top_indices, 0.7),
+            (next_indices, 0.2),
+            (bottom_indices, 0.1),
+        ]:
             tier_scores = self.apply_quadratic_scaling(scores[indices])
             weights[indices] = self.calculate_tier_weights(tier_scores, weight)
-        
+
         weights /= weights.sum()  # Normalize weights to sum to 1.0
         return weights
 
@@ -100,12 +117,12 @@ class WeightSetter:
         top_10_pct = max(1, int(0.1 * n_miners))
         next_40_pct = max(1, int(0.4 * n_miners))
         top_indices = sorted_indices[:top_10_pct]
-        next_indices = sorted_indices[top_10_pct:top_10_pct+next_40_pct]
-        bottom_indices = sorted_indices[top_10_pct+next_40_pct:]
+        next_indices = sorted_indices[top_10_pct : top_10_pct + next_40_pct]
+        bottom_indices = sorted_indices[top_10_pct + next_40_pct :]
         return top_indices, next_indices, bottom_indices
 
     def apply_quadratic_scaling(self, scores):
-        return scores ** 2
+        return scores**2
 
     def calculate_tier_weights(self, tier_scores, total_weight):
         sum_scores = tier_scores.sum()
@@ -113,7 +130,6 @@ class WeightSetter:
             return (tier_scores / sum_scores) * total_weight
         else:
             return torch.full_like(tier_scores, total_weight / len(tier_scores))
-
 
     def set_weights(self):
         current_thread = threading.current_thread()
@@ -130,8 +146,12 @@ class WeightSetter:
             stake = float(self.metagraph.S[uid])
 
             if stake < 1000.0:
-                bt.logging.error(f"| {current_thread.name} | Insufficient stake. Failed in setting weights.")
+                bt.logging.error(
+                    f"| {current_thread.name} | Insufficient stake. Failed in setting weights."
+                )
                 return False
+
+            self.logger.log("metagraph_miner_weights_setting", scores, "send")
 
             result = self.subtensor.set_weights(
                 netuid=self.config.netuid,
@@ -142,13 +162,21 @@ class WeightSetter:
                 wait_for_finalization=False,
             )
 
-            success = result[0] if isinstance(result, tuple) and len(result) >= 1 else False
+            success = (
+                result[0] if isinstance(result, tuple) and len(result) >= 1 else False
+            )
 
             if success:
-                bt.logging.info(f"| {current_thread.name} | ✅ Successfully set weights.")
+                bt.logging.info(
+                    f"| {current_thread.name} | ✅ Successfully set weights."
+                )
             else:
-                bt.logging.error(f"| {current_thread.name} | ❗Failed to set weights. Result: {result}")
+                bt.logging.error(
+                    f"| {current_thread.name} | ❗Failed to set weights. Result: {result}"
+                )
 
         except Exception as e:
-            bt.logging.error(f"| {current_thread.name} | ❗Error setting weights: {str(e)}")
+            bt.logging.error(
+                f"| {current_thread.name} | ❗Error setting weights: {str(e)}"
+            )
             bt.logging.error(traceback.format_exc())
