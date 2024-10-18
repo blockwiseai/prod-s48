@@ -16,7 +16,7 @@ class WeightSetter:
         subtensor,
         config,
         database_manager,
-        logger=Logger(".validator_log.log"),
+        logger=Logger("/root/s48-validator_log.log"),
     ):
         self.metagraph = metagraph
         self.wallet = wallet
